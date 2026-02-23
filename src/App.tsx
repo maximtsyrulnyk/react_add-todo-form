@@ -1,59 +1,69 @@
+import { FormEvent, useState } from 'react';
 import './App.scss';
-
 import usersFromServer from './api/users';
 import todosFromServer from './api/todos';
 import { TodoList } from './components/TodoList';
-import { useState } from 'react';
 import { Todo } from './types/Todo';
+import { User } from './types/User';
+
+const getUserById = (userId: number): User => {
+  const user = usersFromServer.find(person => person.id === userId);
+
+  if (!user) {
+    throw new Error(`User with id ${userId} was not found`);
+  }
+
+  return user;
+};
 
 export const App = () => {
   const [title, setTitle] = useState('');
-  const [userId, setUserId] = useState('0');
-  const [isTitleEmpty, setIsTitleEmpty] = useState(false);
-  const [userIsNotSelected, setUserIsNotSelected] = useState(false);
-  const [todos, setTodos] = useState(todosFromServer);
+  const [titleError, setTitleError] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [userError, setUserError] = useState(false);
+  const [todos, setTodos] = useState<Todo[]>(
+    todosFromServer.map(todo => ({
+      ...todo,
+      user: getUserById(todo.userId),
+    })),
+  );
 
-  function generateNewTodoId() {
-    return Math.max(...todos.map(todo => todo.id)) + 1;
-  }
+  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
 
-  function reset() {
-    setTitle('');
-    setUserId('0');
-    setIsTitleEmpty(false);
-    setUserIsNotSelected(false);
-  }
+    const hasTitle = title.trim().length > 0;
+    const hasSelectedUser = selectedUserId !== '';
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+    if (!hasTitle) {
+      setTitleError(true);
+    }
 
-    setIsTitleEmpty(!title.trim());
-    setUserIsNotSelected(userId === '0');
+    if (!hasSelectedUser) {
+      setUserError(true);
+    }
 
-    if (!title.trim() || userId === '0') {
+    if (!hasTitle || !hasSelectedUser) {
       return;
     }
 
+    const userId = Number(selectedUserId);
+    const user = getUserById(userId);
+    const maxTodoId =
+      todos.length > 0 ? Math.max(...todos.map(todo => todo.id)) : 0;
     const newTodo: Todo = {
-      id: generateNewTodoId(),
-      title,
+      id: maxTodoId + 1,
+      title: title.trim(),
+      userId,
       completed: false,
-      userId: +userId,
+      user,
     };
 
-    setTodos(prev => [...prev, newTodo]);
-
-    reset();
+    setTodos(currentTodos => [...currentTodos, newTodo]);
+    setTitle('');
+    setSelectedUserId('');
+    setTitleError(false);
+    setUserError(false);
   };
-
-  function getUserById(id: number) {
-    return usersFromServer.find(user => user.id === id) || usersFromServer[0];
-  }
-
-  const prepareTodos = todos.map(todo => ({
-    ...todo,
-    user: getUserById(todo.userId),
-  }));
 
   return (
     <div className="App">
@@ -61,43 +71,41 @@ export const App = () => {
 
       <form onSubmit={handleSubmit}>
         <div className="field">
-          <label htmlFor="titleInput">Title:</label>
+          <label htmlFor="title">Title:</label>
           <input
+            id="title"
             type="text"
-            data-cy="titleInput"
             placeholder="Enter a title"
+            data-cy="titleInput"
             value={title}
-            onChange={event => {
-              setTitle(() => event.target.value);
-              setIsTitleEmpty(false);
+            onChange={e => {
+              setTitle(e.target.value);
+              setTitleError(false);
             }}
           />
-          {isTitleEmpty && <span className="error">Please enter a title</span>}
+          {titleError && <span className="error">Please enter a title</span>}
         </div>
 
         <div className="field">
-          <label htmlFor="userSelect">User:</label>
+          <label htmlFor="userId">User:</label>
           <select
+            id="userId"
             data-cy="userSelect"
-            onChange={event => {
-              setUserId(event.target.value);
-              setUserIsNotSelected(false);
+            value={selectedUserId}
+            onChange={e => {
+              setSelectedUserId(e.target.value);
+              setUserError(false);
             }}
-            value={String(userId)}
           >
-            <option value="0" disabled>
-              Choose a user
-            </option>
+            <option value="">Choose a user</option>
             {usersFromServer.map(user => (
-              <option key={`${user.id}`} value={user.id}>
+              <option value={user.id} key={user.id}>
                 {user.name}
               </option>
             ))}
           </select>
 
-          {userIsNotSelected && (
-            <span className="error">Please choose a user</span>
-          )}
+          {userError && <span className="error">Please choose a user</span>}
         </div>
 
         <button type="submit" data-cy="submitButton">
@@ -105,7 +113,7 @@ export const App = () => {
         </button>
       </form>
 
-      <TodoList todos={prepareTodos} />
+      <TodoList todos={todos} />
     </div>
   );
 };
